@@ -1,0 +1,15 @@
+# forge 루프 디렉터리: 휘발 상태(plan/run/STATUS/backlog/executed/done)는 제외하고 영속 문서만 추적한다.
+.forge/*
+!.forge/CONTEXT.md
+!.forge/adr/
+!.forge/retro/
+!.forge/codebase/
+!.forge/config.json
+!.forge/branch/
+
+# FreeCAD 백업, Python 캐시
+*.FCBak
+__pycache__/
+
+# macOS 정크
+.DS_Store
