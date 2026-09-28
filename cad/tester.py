@@ -4,7 +4,7 @@
 #
 # 좌표는 params.py 참고. 인쇄는 뒷면(Z=0)을 바닥에 두고 눕혀서 한다.
 # 전류 경로: 배터리 뒷면(+) → ② 애노드 다리 → LED → ① 철사 A → 끝 A → 측정 대상 다이오드
-#            → 끝 B → 철사 B → ③ 창 → 배터리 앞면(−)
+#            → 끝 B → 철사 B → ③ 통과 구멍 → 천장 접촉 홈 → 배터리 앞면(−)
 import os
 import sys
 
@@ -15,8 +15,8 @@ import MeshPart
 import Part
 
 from params import (BACK_T, BATTERY_D, BATTERY_T, BOSS_TOP, FRONT_T, GROOVE_DEPTH, GROOVE_W,
-                    LED_CLEAR, LED_FLANGE_D, LED_Z, POCKET_CLEAR_D, POCKET_CLEAR_T, PROBE_SPACING,
-                    SEAT_DEPTH)
+                    LED_CLEAR, LED_FLANGE_D, LED_Z, NEG_CONTACT_LEN, NEG_PASS_LEN, NEG_PIN_W,
+                    POCKET_CLEAR_D, POCKET_CLEAR_T, PROBE_SPACING, SEAT_DEPTH)
 
 V = App.Vector
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,9 +46,8 @@ SPLICE_Y = (-1.0, 7.0)   # ① 압착 이음부: LED 캐소드 다리와 연장 
 ANODE_W = 0.8            # ② 애노드 다리 홈 폭
 ANODE_DEPTH = 0.45       # ② 뒷벽 안쪽 홈 깊이 (다리가 0.05mm 튀어나와 배터리를 누른다)
 ANODE_Y_END = -4.0
-WINDOW_W = 1.2           # ③ (−) 접점 창
-WINDOW_Y = (-3.0, 1.0)
-WIRE_B_Y_TOP = 4.0       # 철사 B 홈 위쪽 끝 (창 위 3mm에서 철사 끝을 붙잡는다)
+PASS_Y0 = -1.0           # ③ 통과 구멍 아래쪽 끝. 철사 B는 홈 B를 올라와 여기서 비스듬히 앞판을 지나
+CONTACT_DEPTH = 0.45     #   천장 안쪽 접촉 홈에 눕는다 (깊이 0.45 → 다리가 0.05mm 튀어나와 (−) 면을 누른다)
 
 NOSE_BASE_Y = -9.0
 NOSE_BASE_W = 10.0
@@ -101,9 +100,12 @@ def build():
         box(WIRE_A_X - hw, WIRE_A_X + hw, Y_TIP - 1, SEAT_Y0 + 0.01, GROOVE_Z, 20),
         box(WIRE_A_X - hw - GROOVE_W, WIRE_A_X + hw, SPLICE_Y[0], SPLICE_Y[1], GROOVE_Z, 20),
         box(WIRE_A_X - 0.5, WIRE_A_X + 0.5, FUNNEL_Y0, SEAT_Y0 + 0.01, LED_Z + 0.8, 20),
-        # 철사 B: 앞면 홈 + ③ (−) 접점 창
-        box(WIRE_B_X - hw, WIRE_B_X + hw, Y_TIP - 1, WIRE_B_Y_TOP, GROOVE_Z, 20),
-        box(WIRE_B_X - WINDOW_W / 2, WIRE_B_X + WINDOW_W / 2, WINDOW_Y[0], WINDOW_Y[1], POCKET_Z1 - 0.1, 20),
+        # 철사 B: 앞면 홈 B → ③ 통과 구멍 → 포켓 천장 안쪽 접촉 홈 (구멍 위쪽으로 NEG_CONTACT_LEN)
+        box(WIRE_B_X - hw, WIRE_B_X + hw, Y_TIP - 1, PASS_Y0 + NEG_PASS_LEN, GROOVE_Z, 20),
+        box(WIRE_B_X - NEG_PIN_W / 2, WIRE_B_X + NEG_PIN_W / 2, PASS_Y0, PASS_Y0 + NEG_PASS_LEN,
+            POCKET_Z1 - 0.1, 20),
+        box(WIRE_B_X - NEG_PIN_W / 2, WIRE_B_X + NEG_PIN_W / 2, PASS_Y0, PASS_Y0 + NEG_PASS_LEN + NEG_CONTACT_LEN,
+            POCKET_Z1 - 0.1, POCKET_Z1 + CONTACT_DEPTH),
         # ② 애노드: 깔때기 → 위쪽 벽 속 터널 → 뒷벽 안쪽 홈
         box(WIRE_A_X - 0.5, WIRE_A_X + 0.5, FUNNEL_Y0, SEAT_Y0 + 0.01, 0.55, LED_Z - 0.7),
         box(WIRE_A_X - ANODE_W / 2, WIRE_A_X + ANODE_W / 2, BOSS_Y0 + 0.5, FUNNEL_Y0 + 0.01, 0.55, 1.35),

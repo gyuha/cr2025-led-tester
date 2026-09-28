@@ -13,9 +13,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import Mesh
 
-from params import (BACK_T, BATTERY_D, BATTERY_T, BOSS_TOP, GROOVE_W, INSULATION_MIN, LED_CLEAR,
-                    LED_FLANGE_D, LED_Z, NEG_SAFE_R, POCKET_CLEAR_D, POCKET_CLEAR_T, PROBE_SPACING,
-                    SEAT_DEPTH)
+from params import (BACK_T, BATTERY_D, BATTERY_T, BOSS_TOP, FRONT_T, GROOVE_DEPTH, GROOVE_W,
+                    INSULATION_MIN, LED_CLEAR, LED_FLANGE_D, LED_Z, NEG_CONTACT_LEN, NEG_PASS_LEN,
+                    NEG_PIN_W, NEG_SAFE_R, POCKET_CLEAR_D, POCKET_CLEAR_T, PROBE_SPACING, SEAT_DEPTH)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STL = os.path.join(ROOT, "stl", "tester.stl")
@@ -92,7 +92,7 @@ try:
     expect("끝 B 홈 폭", b1 - b0, GROOVE_W)
     report.append(f"끝 A–B {spacing:.3f}")
 
-    # 철사 A·B 홈 아래 절연층, 그리고 (−) 면 창의 위치
+    # 철사 A·B 홈 아래 절연층, 그리고 (−) 접점 구멍의 위치
     xa, xb = -PROBE_SPACING / 2, PROBE_SPACING / 2
     lines = {"철사 A": xa + JIT, "철사 A 이음부": xa - GROOVE_W + JIT, "철사 B": xb + JIT}
     r_in = (BATTERY_D + POCKET_CLEAR_D) / 2 - 0.3
@@ -105,29 +105,49 @@ try:
             sp = spans(mesh, x, y, 0, "z")
             above = [s for s in sp if s[0] >= pocket_top - 0.05]
             if not above or above[0][0] > pocket_top + 0.05:
-                windows.append((name, x, y))       # 포켓 천장이 뚫린 곳 = 창
+                windows.append((name, x, y))       # 포켓 천장이 열린 곳 (철사 B의 통과 구멍·접촉 홈)
                 continue
             thinnest = min(thinnest, above[0][1] - above[0][0])
             at_least(f"{name} 절연층 (y={y:.2f})", above[0][1] - above[0][0], INSULATION_MIN)
     report.append(f"절연 최소 {thinnest:.2f}")
-
-    # 포켓 위 앞판을 관통하는 구멍은 (−) 면 안쪽(NEG_SAFE_R)의 창뿐이어야 한다
-    z_plate = pocket_top + 0.35
-    holes = 0
-    for i in range(int(2 * r_in / 0.2)):
-        y = -r_in + i * 0.2 + JIT
-        for x0, x1 in gaps(spans(mesh, 0, y, z_plate, "x")):
-            if abs(x0) > r_in or abs(x1) > r_in:
-                continue
-            holes += 1
-            far = max(math.hypot(x0, y), math.hypot(x1, y))
-            if far > NEG_SAFE_R:
-                raise AssertionError(f"앞판 구멍이 (−) 안전 반경 밖: ({x0:.2f}~{x1:.2f}, {y:.2f}) r={far:.2f}")
-    if not holes or not any(n == "철사 B" for n, _, _ in windows):
-        raise AssertionError("철사 B 선 위에 (−) 접점 창이 없음")
     if any(n != "철사 B" for n, _, _ in windows):
         raise AssertionError(f"철사 A 선에서 포켓이 드러남: {[w for w in windows if w[0] != '철사 B'][:3]}")
-    report.append(f"창 {holes}줄 ≤ r{NEG_SAFE_R:g}")
+
+    # ③ 철사 B 경로의 두 부분을 따로 잰다.
+    #  (1) 앞판을 관통하는 구멍: 철사 B 선 위의 통과 구멍 하나뿐, 폭 NEG_PIN_W, 길이 ≤ NEG_PASS_LEN
+    #      (큰 창에 V자로 꺾으면 붙잡을 곳이 없어 고정되지 않는다)
+    #  (2) 포켓 천장의 열린 곳: 전부 (−) 안전 반경 안, 철사 B 선을 따라 길이 NEG_PASS_LEN + NEG_CONTACT_LEN
+    #      (꽂힌 끝 한 점이 아니라 선으로 (−) 면에 닿아야 접촉이 충분하다)
+    groove_floor = pocket_top + FRONT_T - GROOVE_DEPTH
+    through = []
+    for i in range(int(2 * r_in / 0.1)):
+        y = -r_in + i * 0.1 + JIT
+        for x0, x1 in gaps(spans(mesh, 0, y, groove_floor - 0.1, "x")):
+            if abs(x0) > r_in or abs(x1) > r_in:
+                continue
+            if max(math.hypot(x0, y), math.hypot(x1, y)) > NEG_SAFE_R:
+                raise AssertionError(f"앞판 관통 구멍이 (−) 안전 반경 밖: ({x0:.2f}~{x1:.2f}, {y:.2f})")
+            if not x0 < xb < x1:
+                raise AssertionError(f"철사 B 선이 아닌 곳에 앞판 관통 구멍: ({x0:.2f}~{x1:.2f}, {y:.2f})")
+            expect(f"통과 구멍 폭 (y={y:.2f})", x1 - x0, NEG_PIN_W)
+            through.append(y)
+    if not through:
+        raise AssertionError("철사 B 선 위에 통과 구멍이 없음")
+    if max(through) - min(through) > NEG_PASS_LEN:
+        raise AssertionError(f"통과 구멍 길이가 {NEG_PASS_LEN}mm보다 김: {min(through):.2f}~{max(through):.2f}")
+
+    ceiling = pocket_top + 0.1
+    for i in range(int(2 * r_in / 0.2)):
+        y = -r_in + i * 0.2 + JIT
+        for x0, x1 in gaps(spans(mesh, 0, y, ceiling, "x")):
+            if abs(x0) > r_in or abs(x1) > r_in:
+                continue
+            if max(math.hypot(x0, y), math.hypot(x1, y)) > NEG_SAFE_R:
+                raise AssertionError(f"포켓 천장 열린 곳이 (−) 안전 반경 밖: ({x0:.2f}~{x1:.2f}, {y:.2f})")
+    run = max((g for g in gaps(spans(mesh, xb + JIT, 0, ceiling, "y")) if abs(g[0]) < r_in and abs(g[1]) < r_in),
+              key=lambda g: g[1] - g[0], default=(0, 0))
+    at_least("(−) 면 접촉 홈 길이 (통과 구멍 포함)", run[1] - run[0], NEG_PASS_LEN + NEG_CONTACT_LEN)
+    report.append(f"통과 구멍 {NEG_PIN_W:g}mm · (−) 접촉 {run[1] - run[0] - NEG_PASS_LEN:.1f}mm ≤ r{NEG_SAFE_R:g}")
 
     # LED 플랜지 자리 지름
     g = gap_at(spans(mesh, 0, BOSS_TOP - SEAT_DEPTH / 2 + JIT, LED_Z + JIT, "x"), xa)
