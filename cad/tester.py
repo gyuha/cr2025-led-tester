@@ -1,4 +1,4 @@
-# CR2025 극성 테스터 본체 → stl/tester.stl, cad/tester.FCStd
+# CR2025 극성 테스터 본체 + 케이블 커버 → stl/tester.stl, stl/cover.stl, cad/tester.FCStd
 # 실행: /Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd cad/tester.py
 # freecadcmd는 예외가 나도 종료 코드 0을 돌려주므로, 결과는 "BUILD OK" / "BUILD FAIL" 줄로 판단한다.
 #
@@ -14,13 +14,15 @@ import FreeCAD as App
 import MeshPart
 import Part
 
-from params import (BACK_T, BATTERY_D, BATTERY_T, BOSS_TOP, FRONT_T, GROOVE_DEPTH, GROOVE_W,
-                    LED_CLEAR, LED_FLANGE_D, LED_Z, NEG_CONTACT_LEN, NEG_PASS_LEN, NEG_PIN_W,
+from params import (BACK_T, BATTERY_D, BATTERY_T, BOSS_TOP, COVER_T, COVER_TIP_GAP, COVER_Y0, FRONT_T,
+                    GROOVE_DEPTH, GROOVE_W, LED_CLEAR, LED_FLANGE_D, LED_Z, NEG_CONTACT_LEN,
+                    NEG_PASS_LEN, NEG_PIN_W, PEG_D, PEG_HOLE_D, PEG_HOLE_DEPTH, PEG_LEN, PEG_X, PEG_Y,
                     POCKET_CLEAR_D, POCKET_CLEAR_T, PROBE_SPACING, SEAT_DEPTH)
 
 V = App.Vector
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_STL = os.path.join(ROOT, "stl", "tester.stl")
+OUT_COVER = os.path.join(ROOT, "stl", "cover.stl")
 OUT_FCSTD = os.path.join(ROOT, "cad", "tester.FCStd")
 
 # 두께 방향: 뒷판 | 배터리 포켓 | 앞판
@@ -55,6 +57,9 @@ NOSE_LEN = 8.0
 Y_TIP = -(CASE_R + NOSE_LEN)
 TIP_WALL = 0.8
 NOSE_TIP_T = 2.0         # 노즈 끝 두께 (시험편과 같음). 뒷면은 45°로 깎아 서포트 없이 인쇄된다.
+TIP_W = PROBE_SPACING + GROOVE_W + 2 * TIP_WALL
+NOSE_OUTLINE = [(-NOSE_BASE_W / 2, NOSE_BASE_Y), (NOSE_BASE_W / 2, NOSE_BASE_Y),
+                (TIP_W / 2, Y_TIP), (-TIP_W / 2, Y_TIP)]
 
 TONGUE_X0 = 5.0          # 걸림턱 혀: 뒷판을 두 줄로 갈라 만든 외팔보
 TONGUE_HALF_W = 2.0
@@ -81,9 +86,7 @@ def build():
     boss = Part.makeCylinder(BOSS_R, BOSS_TOP - BOSS_Y0, V(WIRE_A_X, BOSS_Y0, LED_Z), V(0, 1, 0))
     boss = boss.common(box(-50, 50, -50, 50, 0, 50))  # 뒷면은 평평하게
 
-    tip_w = PROBE_SPACING + GROOVE_W + 2 * TIP_WALL
-    nose = prism_xy([(-NOSE_BASE_W / 2, NOSE_BASE_Y), (NOSE_BASE_W / 2, NOSE_BASE_Y),
-                     (tip_w / 2, Y_TIP), (-tip_w / 2, Y_TIP)], 0, TOTAL_T)
+    nose = prism_xy(NOSE_OUTLINE, 0, TOTAL_T)
     zc = TOTAL_T - NOSE_TIP_T
     chamfer = Part.Face(Part.makePolygon([V(-10, Y_TIP - 1, zc + 1), V(-10, Y_TIP - 1, -1),
                                           V(-10, Y_TIP + zc + 1, -1), V(-10, Y_TIP - 1, zc + 1)]))
@@ -106,6 +109,9 @@ def build():
             POCKET_Z1 - 0.1, 20),
         box(WIRE_B_X - NEG_PIN_W / 2, WIRE_B_X + NEG_PIN_W / 2, PASS_Y0, PASS_Y0 + NEG_PASS_LEN + NEG_CONTACT_LEN,
             POCKET_Z1 - 0.1, POCKET_Z1 + CONTACT_DEPTH),
+        # 케이블 커버 핀이 들어가는 고정 구멍 2개 (노즈 윗부분)
+        *[Part.makeCylinder(PEG_HOLE_D / 2, PEG_HOLE_DEPTH + 1, V(x, PEG_Y, TOTAL_T - PEG_HOLE_DEPTH))
+          for x in (-PEG_X, PEG_X)],
         # ② 애노드: 깔때기 → 위쪽 벽 속 터널 → 뒷벽 안쪽 홈
         box(WIRE_A_X - 0.5, WIRE_A_X + 0.5, FUNNEL_Y0, SEAT_Y0 + 0.01, 0.55, LED_Z - 0.7),
         box(WIRE_A_X - ANODE_W / 2, WIRE_A_X + ANODE_W / 2, BOSS_Y0 + 0.5, FUNNEL_Y0 + 0.01, 0.55, 1.35),
@@ -126,22 +132,46 @@ def build():
     return body.fuse(bump.extrude(V(0, 3.0, 0))).removeSplitter()
 
 
-try:
-    shape = build()
+def build_cover():
+    """케이블 커버 (조립 위치): 노즈 앞면을 덮는 판 + 본체 고정 구멍에 꽂는 핀 2개."""
+    plate = prism_xy(NOSE_OUTLINE, TOTAL_T, TOTAL_T + COVER_T)
+    plate = plate.common(box(-50, 50, Y_TIP + COVER_TIP_GAP, COVER_Y0, -1, 50))
+    pegs = [Part.makeCylinder(PEG_D / 2, PEG_LEN + 0.01, V(x, PEG_Y, TOTAL_T - PEG_LEN)) for x in (-PEG_X, PEG_X)]
+    return plate.fuse(pegs).removeSplitter()
+
+
+def for_print(cover):
+    """인쇄 방향: Y축으로 180° 뒤집어 판을 바닥(z=0)에, 핀을 위로 둔다."""
+    c = cover.copy()
+    c.rotate(V(0, 0, 0), V(0, 1, 0), 180)
+    c.translate(V(0, 0, TOTAL_T + COVER_T))
+    return c
+
+
+def write_stl(shape, path):
     if not shape.isValid() or len(shape.Solids) != 1:
-        raise RuntimeError(f"유효하지 않은 형상 (솔리드 {len(shape.Solids)}개)")
+        raise RuntimeError(f"유효하지 않은 형상 {os.path.basename(path)} (솔리드 {len(shape.Solids)}개)")
     mesh = MeshPart.meshFromShape(Shape=shape, LinearDeflection=0.01, AngularDeflection=0.05)
     if not mesh.isSolid():
-        raise RuntimeError("STL 메시가 닫혀 있지 않음")
-    os.makedirs(os.path.dirname(OUT_STL), exist_ok=True)
-    mesh.write(OUT_STL)
+        raise RuntimeError(f"STL 메시가 닫혀 있지 않음: {os.path.basename(path)}")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    mesh.write(path)
+    return mesh
+
+
+try:
+    shape = build()
+    cover = build_cover()
+    mesh = write_stl(shape, OUT_STL)
+    write_stl(for_print(cover), OUT_COVER)
     doc = App.newDocument("tester")
     doc.addObject("Part::Feature", "Tester").Shape = shape
+    doc.addObject("Part::Feature", "CableCover").Shape = cover   # 조립 위치
     doc.recompute()
     doc.saveAs(OUT_FCSTD)
     bb = shape.BoundBox
     print(f"BUILD OK {OUT_STL} ({mesh.CountFacets} facets, "
-          f"{bb.XLength:.1f}x{bb.YLength:.1f}x{bb.ZLength:.1f}mm) + {OUT_FCSTD}", flush=True)
+          f"{bb.XLength:.1f}x{bb.YLength:.1f}x{bb.ZLength:.1f}mm) + {OUT_COVER} + {OUT_FCSTD}", flush=True)
 except Exception as e:
     print(f"BUILD FAIL: {e!r}", flush=True)
     sys.exit(1)

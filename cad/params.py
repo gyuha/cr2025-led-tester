@@ -28,5 +28,15 @@ FRONT_T = 1.4         # 앞판 두께 (철사 홈 아래 절연층 포함)
 LED_Z = 3.3           # LED 중심의 Z 위치 (다리가 앞뒤로 벌어진다)
 BOSS_TOP = 14.3       # LED 받침 윗면의 Y 위치
 SEAT_DEPTH = 2.0      # LED 플랜지 자리 깊이
+# 케이블 커버 (별도 부품 stl/cover.stl): 노즈 구간 홈 위를 덮어 철사를 누른다
+COVER_Y0 = -9.5       # 커버 위쪽 끝 (▶| 각인 바로 아래)
+COVER_T = 0.8         # 커버 판 두께
+COVER_TIP_GAP = 0.3   # 노즈 끝에서 커버가 물러나는 거리 (철사 끝은 그대로 나온다)
+PEG_X = 3.0           # 커버 핀과 본체 고정 구멍의 X 위치 (±)
+PEG_Y = -11.5         # 커버 핀과 본체 고정 구멍의 Y 위치 (노즈 윗부분, 포켓 밖)
+PEG_D = 1.4           # 커버 핀 지름
+PEG_HOLE_D = 1.5      # 본체 고정 구멍 지름 (세로 구멍은 인쇄 시 좁아져 핀이 꽉 낀다)
+PEG_LEN = 2.5         # 커버 핀 길이
+PEG_HOLE_DEPTH = 3.0  # 본체 고정 구멍 깊이
 
 FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"  # 각인 글꼴 (macOS 기본)

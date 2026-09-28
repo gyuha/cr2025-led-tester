@@ -1,4 +1,4 @@
-# 테스터 본체 치수 검사: stl/tester.stl 에 광선을 쏴서 재료 구간을 직접 잰다.
+# 테스터 본체·케이블 커버 치수 검사: stl/tester.stl, stl/cover.stl 에 광선을 쏴서 재료 구간을 직접 잰다.
 # 실행: /Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd cad/check_tester.py
 # 통과하면 "CHECK OK", 실패하면 "CHECK FAIL: <이유>" 를 출력하고 종료 코드 1.
 # (freecadcmd는 잡히지 않은 예외에도 0을 돌려주므로 판정은 출력 줄로 한다.)
@@ -13,12 +13,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import Mesh
 
-from params import (BACK_T, BATTERY_D, BATTERY_T, BOSS_TOP, FRONT_T, GROOVE_DEPTH, GROOVE_W,
-                    INSULATION_MIN, LED_CLEAR, LED_FLANGE_D, LED_Z, NEG_CONTACT_LEN, NEG_PASS_LEN,
-                    NEG_PIN_W, NEG_SAFE_R, POCKET_CLEAR_D, POCKET_CLEAR_T, PROBE_SPACING, SEAT_DEPTH)
+from params import (BACK_T, BATTERY_D, BATTERY_T, BOSS_TOP, COVER_T, COVER_TIP_GAP, COVER_Y0, FRONT_T,
+                    GROOVE_DEPTH, GROOVE_W, INSULATION_MIN, LED_CLEAR, LED_FLANGE_D, LED_Z,
+                    NEG_CONTACT_LEN, NEG_PASS_LEN, NEG_PIN_W, NEG_SAFE_R, PEG_D, PEG_HOLE_D, PEG_LEN,
+                    PEG_X, PEG_Y, POCKET_CLEAR_D, POCKET_CLEAR_T, PROBE_SPACING, SEAT_DEPTH)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STL = os.path.join(ROOT, "stl", "tester.stl")
+COVER = os.path.join(ROOT, "stl", "cover.stl")
 TOL = 0.01          # 평면끼리 잰 치수
 TOL_CURVED = 0.05   # 원을 가로지르는 치수 (다각형 근사 오차)
 JIT = 0.0123        # 광선이 삼각형 모서리를 정확히 지나지 않게 살짝 비킨다
@@ -78,11 +80,11 @@ try:
     pocket_top = g[1]
     report.append(f"두께 {g[1] - g[0]:.2f}")
 
-    # 노즈 끝: 앞면 높이를 재고, 그 바로 아래에서 두 홈의 간격과 폭을 잰다
+    # 노즈 끝: 철사 높이(홈 중간)에서 두 홈의 간격과 폭을 잰다
     want_spacing = float(os.environ.get("EXPECT_PROBE_SPACING", PROBE_SPACING))
+    front = pocket_top + FRONT_T
     y_tip = bb.YMin + 0.5 + JIT
-    front = spans(mesh, JIT, y_tip, 0, "z")[-1][1]
-    g = gaps(spans(mesh, 0, y_tip, front - 0.2, "x"))
+    g = gaps(spans(mesh, 0, y_tip, front - GROOVE_DEPTH / 2, "x"))
     if len(g) != 2:
         raise AssertionError(f"노즈 끝 홈 {len(g)}개 (기대 2개)")
     (a0, a1), (b0, b1) = g
@@ -153,6 +155,33 @@ try:
     g = gap_at(spans(mesh, 0, BOSS_TOP - SEAT_DEPTH / 2 + JIT, LED_Z + JIT, "x"), xa)
     expect("LED 자리 지름", g[1] - g[0], LED_FLANGE_D + LED_CLEAR, TOL_CURVED)
     report.append(f"LED 자리 Ø{g[1] - g[0]:.2f}")
+
+    # 케이블 커버 (cover.stl은 인쇄 방향: Y축으로 180° 뒤집혀 판이 바닥, 핀이 위, x 부호가 반대)
+    #  - 핀 2개가 본체 고정 구멍 2개와 같은 자리에 있고, 구멍보다 가늘어야 꽂힌다
+    #  - 노즈 구간 두 철사 홈 위를 끊김 없이 덮어야 철사가 빠지지 않는다 (열린 홈만으로는 고정이 어렵다)
+    if not os.path.isfile(COVER):
+        raise AssertionError(f"STL 없음: {COVER}")
+    cover = Mesh.Mesh(COVER)
+    if cover.CountFacets == 0 or not cover.isSolid() or cover.hasNonManifolds() \
+            or len(cover.getSeparateComponents()) != 1:
+        raise AssertionError("커버 STL이 닫힌 솔리드 1개가 아님")
+    holes = sorted(h for h in gaps(spans(mesh, 0, PEG_Y + JIT, front - 1.0, "x"))
+                   if abs(abs(h[0] + h[1]) / 2 - PEG_X) < 1.0)
+    pegs = sorted(spans(cover, 0, PEG_Y + JIT, COVER_T + PEG_LEN / 2, "x"))
+    if len(holes) != 2 or len(pegs) != 2:
+        raise AssertionError(f"고정 구멍 {len(holes)}개 · 커버 핀 {len(pegs)}개 (기대 2개씩)")
+    for (h0, h1), (p0, p1) in zip(holes, pegs):   # 두 쌍이 ±PEG_X 대칭이라 뒤집혀도 순서가 같다
+        expect("커버 핀과 고정 구멍 중심", (p0 + p1) / 2, (h0 + h1) / 2)
+        expect("고정 구멍 지름", h1 - h0, PEG_HOLE_D, TOL_CURVED)
+        expect("커버 핀 지름", p1 - p0, PEG_D, TOL_CURVED)
+    y = bb.YMin + COVER_TIP_GAP + 0.2 + JIT
+    while y < COVER_Y0 - 0.2:
+        for x in (xa, xb):
+            if not spans(cover, x + JIT, y, 0, "z"):
+                raise AssertionError(f"커버가 철사 홈을 덮지 않음 (x={x:.1f}, y={y:.2f})")
+        y += 0.5
+    at_least("노즈 끝과 커버 끝 사이", cover.BoundBox.YMin - bb.YMin, COVER_TIP_GAP)
+    report.append(f"커버 핀 Ø{PEG_D:g}/구멍 Ø{PEG_HOLE_D:g} 일치 · 노즈 홈 덮음")
 
     print("CHECK OK " + " · ".join(report), flush=True)
 except Exception as e:
